@@ -114,29 +114,71 @@ field renderer for ProcessDefinition.StepsJson (via XRM CR-001).
 - **Add step**: click [+], pick activity type from dropdown, fill config form
 - **Edit step**: click [✎] to expand inline config form with labeled fields
 - **Delete step**: click [🗑] with confirmation
-- **Reorder**: drag handle (⋮) for drag-and-drop reordering
+- **Reorder**: move up/down buttons (primary), drag handle as enhancement
 - **Template picker**: when editing a text field, dropdown shows available
   variables (`{{RecordId}}`, `{{Record.CaseNumber}}`, `{{StepContext.X}}`)
 
 **Activity type metadata:**
-BPM provides a registry of activity types with their config schemas:
+BPM provides a registry (`IActivityTypeRegistry`) of activity types with their
+config schemas. Host packages register custom activities via
+`AddBpmActivityType<T>(ActivityTypeInfo)`.
+
 ```csharp
 public class ActivityTypeInfo
 {
     public string TypeName { get; set; }         // "CreateRecord"
     public string DisplayName { get; set; }      // "Create Record"
     public string Description { get; set; }      // "Creates a new XRM record"
+    public string SummaryTemplate { get; set; }  // "Create {{entity}} record"
     public List<ConfigFieldInfo> ConfigFields { get; set; }
+    public List<string> OutputKeys { get; set; } // e.g. ["LastCreatedRecordId"]
+    public bool AllowDynamicConfigKeys { get; set; } // for "field.*" patterns
 }
 
 public class ConfigFieldInfo
 {
     public string Key { get; set; }              // "entity"
     public string Label { get; set; }            // "Target Entity"
+    public ConfigFieldType FieldType { get; set; } // Text, Dropdown, EntityPicker, etc.
     public bool Required { get; set; }
     public bool SupportsTemplates { get; set; }  // show variable picker?
+    public string? DefaultValue { get; set; }
+    public List<string>? Options { get; set; }   // for Dropdown type
+    public string? DependsOn { get; set; }       // dynamic options based on another field
 }
+
+public enum ConfigFieldType { Text, Dropdown, EntityPicker, FieldPicker, RelationshipPicker, Boolean }
 ```
+
+**Template variable providers:**
+The template picker dynamically assembles available variables:
+1. Transition metadata: `{{RecordId}}`, `{{EntityName}}`, `{{FieldName}}`, etc.
+2. Record fields: `{{Record.X}}` — derived from the ProcessDefinition's EntityName
+   (looks up that entity's fields from XRM)
+3. Step outputs: `{{StepContext.X}}` — derived from OutputKeys of preceding steps
+
+### Error handling
+
+**Invalid existing StepsJson:**
+- On parse failure, show error banner with the raw JSON in read-only text area
+- Preserve original value; do not overwrite with `[]`
+- Provide explicit "Reset to empty" action with confirmation
+
+**Unknown activity types:**
+- Render as "Unknown: {TypeName}" card with raw config displayed
+- Allow reorder and delete, but not config editing
+- Preserve unknown steps exactly on save (no data loss)
+
+**Validation:**
+- Required config fields block save when empty
+- Report validation state to parent form via XRM CR-001's `ValidationChanged`
+- Invalid steps highlighted with inline error messages
+
+### Editing lifecycle
+
+- Component edits in-memory only; persistence via parent XRM form Save
+- Parent Cancel discards all step edits (original Value restored by XRM)
+- No auto-save or independent persistence
 
 ### Dependencies
 
@@ -149,8 +191,13 @@ public class ConfigFieldInfo
 - [ ] Steps render as visual cards with summary text (not raw JSON)
 - [ ] Users can add a new step by selecting an activity type
 - [ ] Step config is editable via form fields (not text editing)
-- [ ] Steps can be reordered via drag-and-drop
-- [ ] Steps can be deleted
-- [ ] Template variable picker shows available placeholders
+- [ ] Steps can be reordered (up/down buttons; drag-and-drop as enhancement)
+- [ ] Steps can be deleted with confirmation
+- [ ] Template variable picker shows context-aware placeholders
 - [ ] Component serializes back to valid StepsJson on save
 - [ ] Read-only mode shows step summaries without edit controls
+- [ ] Invalid existing JSON shows error state, preserves original value
+- [ ] Unknown activity types preserved as-is (no data loss)
+- [ ] Host-registered custom activity types appear in the editor
+- [ ] Invalid/incomplete steps block parent form save
+- [ ] Cancel discards all unsaved step edits

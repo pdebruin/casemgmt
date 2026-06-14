@@ -19,7 +19,7 @@ builder.Services.AddXrmSeeder<CaseDataSeeder>();
 builder.Services.AddBpmCore();
 builder.Services.AddSingleton<ITransitionActionStore, CaseActionStore>();
 builder.Services.AddSingleton<IActionLog, ConsoleActionLog>();
-builder.Services.AddScoped<IRecordProvider, XrmRecordProvider>();
+builder.Services.AddSingleton<IRecordProvider, XrmRecordProvider>();
 builder.Services.AddTransient<IRecordLifecycleHandler, BpmLifecycleHandler>();
 
 // API Controllers

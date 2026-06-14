@@ -1,40 +1,46 @@
 using System.Text.Json;
 using Bpm.Core.Activities;
+using Microsoft.Extensions.DependencyInjection;
 using Xrm.Core.Services;
 
 namespace CaseMgmt.Server.Bpm;
 
 /// <summary>
 /// Bridges BPM's IRecordProvider to XRM's IRecordService.
+/// Uses IServiceProvider to break the circular DI dependency.
 /// </summary>
 public class XrmRecordProvider : IRecordProvider
 {
-    private readonly IRecordService _records;
-    private readonly IEntityService _entities;
+    private readonly IServiceProvider _sp;
 
-    public XrmRecordProvider(IRecordService records, IEntityService entities)
+    public XrmRecordProvider(IServiceProvider sp)
     {
-        _records = records;
-        _entities = entities;
+        _sp = sp;
     }
 
     public async Task CreateRecordAsync(string entityName, Dictionary<string, string> fields, CancellationToken ct = default)
     {
-        var entities = await _entities.GetAllAsync();
-        var entity = entities.First(e => e.Name == entityName);
+        using var scope = _sp.CreateScope();
+        var entities = scope.ServiceProvider.GetRequiredService<IEntityService>();
+        var records = scope.ServiceProvider.GetRequiredService<IRecordService>();
+
+        var entity = (await entities.GetAllAsync()).First(e => e.Name == entityName);
         var json = JsonSerializer.Serialize(fields);
-        await _records.CreateAsync(entity.Id, json);
+        await records.CreateAsync(entity.Id, json);
     }
 
     public async Task UpdateFieldAsync(string entityName, Guid recordId, string fieldName, string value, CancellationToken ct = default)
     {
-        var entities = await _entities.GetAllAsync();
-        var entity = entities.First(e => e.Name == entityName);
-        var record = await _records.GetByIdAsync(entity.Id, recordId);
+        using var scope = _sp.CreateScope();
+        var entities = scope.ServiceProvider.GetRequiredService<IEntityService>();
+        var records = scope.ServiceProvider.GetRequiredService<IRecordService>();
+
+        var entity = (await entities.GetAllAsync()).First(e => e.Name == entityName);
+        var record = await records.GetByIdAsync(entity.Id, recordId);
         if (record is null) return;
 
         var data = JsonSerializer.Deserialize<Dictionary<string, object>>(record.DataJson)!;
         data[fieldName] = value;
-        await _records.UpdateAsync(entity.Id, recordId, JsonSerializer.Serialize(data));
+        await records.UpdateAsync(entity.Id, recordId, JsonSerializer.Serialize(data));
     }
 }

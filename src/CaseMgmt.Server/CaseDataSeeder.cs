@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Bpm.Core.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Xrm.Core.Data;
 using Xrm.Core.Models;
@@ -11,6 +12,10 @@ public class CaseDataSeeder : IDataSeeder
     {
         if (await db.EntityDefinitions.AnyAsync())
             return;
+
+        // Seed BPM ProcessDefinition entity first
+        var bpmSeeder = new BpmEntitySeeder();
+        await bpmSeeder.SeedAsync(db);
 
         // --- Entity Definitions ---
         var account = new EntityDefinition
@@ -163,6 +168,81 @@ public class CaseDataSeeder : IDataSeeder
         );
 
         await db.SaveChangesAsync();
+
+        // --- BPM Process Definitions (seeded as XRM records) ---
+        // BpmEntitySeeder must run first to create the ProcessDefinition entity.
+        var processDefEntity = await db.EntityDefinitions.FirstOrDefaultAsync(e => e.Name == "ProcessDefinition");
+        if (processDefEntity != null)
+        {
+            var triageFlow = new Record
+            {
+                Id = Guid.NewGuid(),
+                EntityDefinitionId = processDefEntity.Id,
+                DataJson = JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["Name"] = "Create follow-up on triage",
+                    ["Description"] = "When a Case is triaged, create a follow-up Activity and link it to the Case",
+                    ["EntityName"] = "Case",
+                    ["FieldName"] = "Status",
+                    ["FromValue"] = "New",
+                    ["ToValue"] = "Triaged",
+                    ["StepsJson"] = JsonSerializer.Serialize(new[]
+                    {
+                        new { ActivityType = "CreateRecord", Config = new Dictionary<string, string>
+                        {
+                            ["entity"] = "Activity",
+                            ["field.Subject"] = "Triage follow-up for {{RecordId}}",
+                            ["field.Type"] = "Task",
+                            ["field.Status"] = "Open",
+                            ["field.Priority"] = "Normal"
+                        }},
+                        new { ActivityType = "LinkRecord", Config = new Dictionary<string, string>
+                        {
+                            ["relationship"] = "CaseActivities",
+                            ["parentId"] = "{{RecordId}}",
+                            ["childId"] = "{{StepContext.LastCreatedRecordId}}"
+                        }},
+                        new { ActivityType = "SendNotification", Config = new Dictionary<string, string>
+                        {
+                            ["to"] = "support-team",
+                            ["template"] = "case-triaged",
+                            ["subject"] = "Case triaged: {{RecordId}}"
+                        }}
+                    }),
+                    ["Enabled"] = true,
+                    ["Blocking"] = false
+                })
+            };
+
+            var closeFlow = new Record
+            {
+                Id = Guid.NewGuid(),
+                EntityDefinitionId = processDefEntity.Id,
+                DataJson = JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["Name"] = "Notify on case closed",
+                    ["Description"] = "Send notification when any Case is closed",
+                    ["EntityName"] = "Case",
+                    ["FieldName"] = "Status",
+                    ["FromValue"] = "",
+                    ["ToValue"] = "Closed",
+                    ["StepsJson"] = JsonSerializer.Serialize(new[]
+                    {
+                        new { ActivityType = "SendNotification", Config = new Dictionary<string, string>
+                        {
+                            ["to"] = "customer",
+                            ["template"] = "case-closed",
+                            ["subject"] = "Your case has been resolved"
+                        }}
+                    }),
+                    ["Enabled"] = true,
+                    ["Blocking"] = false
+                })
+            };
+
+            db.Records.AddRange(triageFlow, closeFlow);
+            await db.SaveChangesAsync();
+        }
     }
 
     private static string Json<T>(T value) => JsonSerializer.Serialize(value);

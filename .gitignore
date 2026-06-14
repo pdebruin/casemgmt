@@ -3,3 +3,5 @@ obj/
 *.db
 *.user
 .vs/
+*.db-shm
+*.db-wal

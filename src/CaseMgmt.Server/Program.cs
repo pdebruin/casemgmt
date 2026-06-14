@@ -1,7 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Xrm.Core;
 using Xrm.Core.Data;
+using Xrm.Core.Services;
+using Bpm.Core;
+using Bpm.Core.Activities;
+using Bpm.Core.Services;
 using CaseMgmt.Server;
+using CaseMgmt.Server.Bpm;
 using CaseMgmt.Server.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +14,13 @@ var builder = WebApplication.CreateBuilder(args);
 // XRM core services (DbContext, entity/field/relationship/record services)
 builder.Services.AddXrmCore("Data Source=casemgmt.db");
 builder.Services.AddXrmSeeder<CaseDataSeeder>();
+
+// BPM Stage 1: transition actions
+builder.Services.AddBpmCore();
+builder.Services.AddSingleton<ITransitionActionStore, CaseActionStore>();
+builder.Services.AddSingleton<IActionLog, ConsoleActionLog>();
+builder.Services.AddScoped<IRecordProvider, XrmRecordProvider>();
+builder.Services.AddTransient<IRecordLifecycleHandler, BpmLifecycleHandler>();
 
 // API Controllers
 builder.Services.AddControllers()

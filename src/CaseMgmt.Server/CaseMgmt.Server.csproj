@@ -12,6 +12,7 @@
   <ItemGroup>
     <ProjectReference Include="../../../xrm/src/Xrm.Core/Xrm.Core.csproj" />
     <ProjectReference Include="../../../xrm/src/Xrm.Blazor/Xrm.Blazor.csproj" />
+    <ProjectReference Include="../../../bpm/src/Bpm.Core/Bpm.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
